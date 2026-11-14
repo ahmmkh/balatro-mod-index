@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Build the static catalog served by the BMI Worker.
 
-Reads ``mods/<id>/{meta.json,description.md,thumbnail.*}`` and writes, under
-``worker/public``:
+Reads ``mods/<id>/{meta.json,description.md,thumbnail.*}`` and writes, under ``--out``
+(default ``build/catalog``):
 
 * ``index.json``            - one entry per mod, in the shape the Balatro Mod
                               Manager client (``bmi.rs::BmiMod``) deserializes.
@@ -14,6 +14,7 @@ failing the build, so one bad submission can't take down the whole catalog.
 
 from __future__ import annotations
 
+import argparse
 import json
 import re
 import shutil
@@ -25,8 +26,7 @@ from PIL import Image
 
 ROOT = Path(__file__).resolve().parent.parent
 MODS_DIR = ROOT / "mods"
-OUT_DIR = ROOT / "worker" / "public"
-THUMB_DIR = OUT_DIR / "thumbnails"
+DEFAULT_OUT_DIR = ROOT / "build" / "catalog"
 THUMB_MAX_WIDTH = 640
 THUMB_QUALITY = 80
 # Mod ids are "<author>@<name>" directory names. Anything else would make the
@@ -109,9 +109,13 @@ def build_entry(mod_dir: Path, has_thumbnail: bool, commit_times: dict[str, int]
 
 
 def main() -> int:
-    if OUT_DIR.exists():
-        shutil.rmtree(OUT_DIR)
-    THUMB_DIR.mkdir(parents=True)
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--out", type=Path, default=DEFAULT_OUT_DIR, help="output directory (replaced if it exists)")
+    out_dir: Path = parser.parse_args().out.resolve()
+    thumb_dir = out_dir / "thumbnails"
+    if out_dir.exists():
+        shutil.rmtree(out_dir)
+    thumb_dir.mkdir(parents=True)
 
     commit_times = last_commit_times()
     entries: list[dict] = []
@@ -120,18 +124,18 @@ def main() -> int:
             print(f"warning: skipping unsafe mod id {mod_dir.name!r}", file=sys.stderr)
             continue
         thumb_src = find_thumbnail(mod_dir)
-        has_thumb = bool(thumb_src) and convert_thumbnail(thumb_src, THUMB_DIR / f"{mod_dir.name}.webp")
+        has_thumb = bool(thumb_src) and convert_thumbnail(thumb_src, thumb_dir / f"{mod_dir.name}.webp")
         entry = build_entry(mod_dir, has_thumb, commit_times)
         if entry is None:
-            (THUMB_DIR / f"{mod_dir.name}.webp").unlink(missing_ok=True)
+            (thumb_dir / f"{mod_dir.name}.webp").unlink(missing_ok=True)
             continue
         entries.append(entry)
 
-    (OUT_DIR / "index.json").write_text(
+    (out_dir / "index.json").write_text(
         json.dumps({"mods": entries}, ensure_ascii=False, separators=(",", ":")), encoding="utf-8"
     )
     thumbs = sum(1 for e in entries if "thumbnail_url" in e)
-    print(f"wrote {len(entries)} mods, {thumbs} thumbnails -> {OUT_DIR}")
+    print(f"wrote {len(entries)} mods, {thumbs} thumbnails -> {out_dir}")
     return 0
 
 

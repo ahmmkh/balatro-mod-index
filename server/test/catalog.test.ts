@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import {
   type CatalogMod,
   changedSince,
@@ -8,7 +8,7 @@ import {
   parseSort,
   sortMods,
   withDownloads,
-} from "./catalog";
+} from "../src/catalog";
 
 const mod = (id: string, name: string, updated: number): CatalogMod => ({
   id,
@@ -18,7 +18,7 @@ const mod = (id: string, name: string, updated: number): CatalogMod => ({
   meta: {},
 });
 const mods = [mod("b@B", "banana", 20), mod("a@A", "Apple", 30), mod("c@C", "cherry", 10)];
-const counts = { "b@B": { total: 5, today: 1 }, "c@C": { total: 9, today: 0 } };
+const counts = { "b@B": { total: 5, today: 1, week: 2 }, "c@C": { total: 9, today: 0, week: 3 } };
 
 describe("sortMods", () => {
   const ids = (s: Parameters<typeof sortMods>[1]) => sortMods(mods, s, counts).map((m) => m.id);
@@ -65,6 +65,6 @@ describe("changedSince / withDownloads", () => {
     expect(changedSince(mods, "20").map((m) => m.id)).toEqual(["a@A"]);
   });
   it("defaults downloads to zero", () => {
-    expect(withDownloads(mods[1], counts).downloads).toEqual({ total: 0, today: 0 });
+    expect(withDownloads(mods[1], counts).downloads).toEqual({ total: 0, today: 0, week: 0 });
   });
 });

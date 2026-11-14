@@ -3,7 +3,10 @@
 export interface Downloads {
   total: number;
   today: number;
+  week: number;
 }
+
+export const ZERO_DOWNLOADS: Downloads = { total: 0, today: 0, week: 0 };
 
 export interface CatalogMod {
   id: string;
@@ -12,6 +15,15 @@ export interface CatalogMod {
   description: string;
   meta: { "downloadURL"?: string | null } & Record<string, unknown>;
   thumbnail_url?: string;
+  /** Set by the server when the mod's download link has been failing health checks. */
+  unavailable?: boolean;
+}
+
+/** Marker sent in `changed` responses so clients drop a mod they previously cached. */
+export interface Tombstone {
+  id: string;
+  deleted: true;
+  updated_at: string;
 }
 
 export type SortMode =
@@ -101,5 +113,5 @@ export function withDownloads(
   mod: CatalogMod,
   counts: Readonly<Record<string, Downloads>>,
 ): CatalogMod & { downloads: Downloads } {
-  return { ...mod, downloads: counts[mod.id] ?? { total: 0, today: 0 } };
+  return { ...mod, downloads: counts[mod.id] ?? ZERO_DOWNLOADS };
 }
