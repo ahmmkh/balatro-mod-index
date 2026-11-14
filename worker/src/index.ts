@@ -96,6 +96,60 @@ async function recordDownload(env: Env, request: Request, modId: string): Promis
   }
 }
 
+const REPORT_MAX_BYTES = 1_000_000; // D1 rows are capped at 2 MB; the app truncates logs well below this
+const REPORTS_PER_IP_PER_DAY = 5;
+const REPORT_FIELD_MAX = 20_000;
+
+async function submitReport(request: Request, env: Env): Promise<Response> {
+  const declared = Number(request.headers.get("content-length") ?? "0");
+  if (declared > REPORT_MAX_BYTES) return fail(413, "report too large");
+  const raw = await request.text();
+  if (raw.length > REPORT_MAX_BYTES) return fail(413, "report too large");
+
+  let body: Record<string, unknown>;
+  try {
+    body = JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    return fail(400, "invalid json");
+  }
+  const str = (key: string, max = REPORT_FIELD_MAX): string | null => {
+    const v = body[key];
+    return typeof v === "string" ? v.slice(0, max) : null;
+  };
+  const title = str("title", 300);
+  const description = str("description");
+  if (!title?.trim() || description === null) return fail(400, "title and description are required");
+
+  const day = utcDay();
+  const ip = request.headers.get("cf-connecting-ip") ?? "unknown";
+  const ipHash = await sha256Hex(`${env.IP_SALT}|report|${day}|${ip}`);
+  const recent = await env.DB.prepare("SELECT count(*) AS n FROM reports WHERE ip_hash = ? AND day = ?")
+    .bind(ipHash, day)
+    .first<{ n: number }>();
+  if ((recent?.n ?? 0) >= REPORTS_PER_IP_PER_DAY) return fail(429, "too many reports today");
+
+  await env.DB.prepare(
+    `INSERT INTO reports (day, ip_hash, title, description, mm_version, os, arch, cpu, gpu, ram, log_filename, log_b64)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  )
+    .bind(
+      day,
+      ipHash,
+      title,
+      description,
+      str("mm_version", 64) ?? "",
+      str("os", 200) ?? "",
+      str("arch", 64) ?? "",
+      str("cpu", 200) ?? "",
+      str("gpu", 200) ?? "",
+      str("ram", 64) ?? "",
+      str("log_filename", 200) ?? "",
+      str("log_b64", REPORT_MAX_BYTES) ?? "",
+    )
+    .run();
+  return json({ ok: true }, { status: 201 });
+}
+
 async function handle(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const url = new URL(request.url);
   const path = url.pathname;
@@ -109,6 +163,8 @@ async function handle(request: Request, env: Env, ctx: ExecutionContext): Promis
     out.headers.set("cache-control", "public, max-age=86400");
     return out;
   }
+
+  if (path === "/report" && request.method === "POST") return submitReport(request, env);
 
   if (path === "/mods" && request.method === "GET") return listMods(url, env, ctx, false);
   if (path === "/mods/changed" && request.method === "GET") return listMods(url, env, ctx, true);
@@ -175,6 +231,8 @@ export default {
       env.DB.batch([
         env.DB.prepare("DELETE FROM dl_seen WHERE day < ?").bind(utcDay()),
         env.DB.prepare("DELETE FROM mod_daily WHERE day < date('now', '-7 days')"),
+        // Keep the report triage window to 90 days.
+        env.DB.prepare("DELETE FROM reports WHERE day < date('now', '-90 days')"),
       ]),
     );
   },
