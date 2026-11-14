@@ -185,6 +185,18 @@ describe("admin & abuse", () => {
   });
 });
 
+describe("admin jobs", () => {
+  it("run in the background and report conflicts", async () => {
+    const { app, svc } = makeServices();
+    svc.fetchFn = (async () => new Response(null, { status: 200 })) as unknown as typeof fetch; // no real network in tests
+    svc.store.load(writeCatalog([A]));
+    const auth = { authorization: `Bearer ${ADMIN}` };
+    expect((await req(app, "/admin/reload", { method: "POST", headers: auth })).status).toBe(400); // no repo configured
+    expect((await req(app, "/admin/links/check", { method: "POST", headers: auth })).status).toBe(202);
+    expect((await req(app, "/admin/links/check", { method: "POST", headers: auth })).status).toBe(409);
+  });
+});
+
 describe("rate limiter", () => {
   it("refills over time", () => {
     let t = 0;

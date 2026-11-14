@@ -29,6 +29,7 @@ try {
 
 const server = Bun.serve({
   port: cfg.port,
+  idleTimeout: 30, // seconds; long admin jobs run in the background instead
   fetch: (req, srv) => app.fetch(req, { ip: srv.requestIP(req)?.address }),
 });
 log("listening", { port: server.port, trustProxy: cfg.trustProxy, admin: !!cfg.adminToken, repo: cfg.indexRepoUrl });

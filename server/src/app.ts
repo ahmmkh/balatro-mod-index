@@ -195,11 +195,21 @@ export function createApp(svc: Services): Hono<Env> {
       reports: (db.query("SELECT count(*) AS n FROM reports").get() as { n: number }).n,
     });
   });
-  admin.post("/reload", async (c) => {
-    const r = (await svc.sync?.syncOnce(true)) ?? { changed: false };
-    return c.json({ ...r, sync: svc.sync?.status ?? null });
+  // Both jobs outlive any sane HTTP timeout, so they run in the background; poll /admin/stats.
+  let linkCheckRunning = false;
+  admin.post("/reload", (c) => {
+    if (!svc.sync || svc.sync.status.running) return c.json({ started: false, sync: svc.sync?.status ?? null }, svc.sync ? 409 : 400);
+    void svc.sync.syncOnce(true);
+    return c.json({ started: true }, 202);
   });
-  admin.post("/links/check", async (c) => c.json(await checkAllLinks(db, store, { fetchFn: svc.fetchFn })));
+  admin.post("/links/check", (c) => {
+    if (linkCheckRunning) return c.json({ started: false }, 409);
+    linkCheckRunning = true;
+    void checkAllLinks(db, store, { fetchFn: svc.fetchFn })
+      .catch((e) => console.error(JSON.stringify({ event: "link_check_failed", error: String(e) })))
+      .finally(() => (linkCheckRunning = false));
+    return c.json({ started: true }, 202);
+  });
   admin.get("/links", (c) =>
     c.json(db.query("SELECT mod_id, url, status, fails, checked_at FROM link_health WHERE fails > 0 ORDER BY fails DESC").all()),
   );
