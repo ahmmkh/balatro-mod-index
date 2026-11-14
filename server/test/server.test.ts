@@ -188,12 +188,19 @@ describe("admin & abuse", () => {
 describe("admin jobs", () => {
   it("run in the background and report conflicts", async () => {
     const { app, svc } = makeServices();
-    svc.fetchFn = (async () => new Response(null, { status: 200 })) as unknown as typeof fetch; // no real network in tests
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    // No real network in tests; hold the first job open so the second request observes it running.
+    svc.fetchFn = (async () => {
+      await gate;
+      return new Response(null, { status: 200 });
+    }) as unknown as typeof fetch;
     svc.store.load(writeCatalog([A]));
     const auth = { authorization: `Bearer ${ADMIN}` };
     expect((await req(app, "/admin/reload", { method: "POST", headers: auth })).status).toBe(400); // no repo configured
     expect((await req(app, "/admin/links/check", { method: "POST", headers: auth })).status).toBe(202);
     expect((await req(app, "/admin/links/check", { method: "POST", headers: auth })).status).toBe(409);
+    release();
   });
 });
 
