@@ -10,8 +10,12 @@ import {
   withDownloads,
 } from "./catalog";
 
-const COUNTS_CACHE_KEY = "https://bmi.internal/counts/v1";
-const COUNTS_TTL_SECONDS = 60;
+const COUNTS_TTL_MS = 60_000;
+
+// Short-lived, isolate-local copy of the counters. The Cache API isn't documented for *.workers.dev
+// hostnames, so don't depend on it; this keeps D1 reads bounded under load on any hostname.
+// Holds shared derived data only (no per-request state), so sharing across requests is safe.
+let countsCache: { at: number; counts: Record<string, Downloads> } | null = null;
 
 // The catalog is an immutable build artifact (changes only on deploy), so caching the parsed
 // copy for the life of the isolate is safe. It holds no per-request state.
@@ -44,10 +48,9 @@ function fail(status: number, message: string): Response {
   return json({ error: message }, { status });
 }
 
-async function getCounts(env: Env, ctx: ExecutionContext): Promise<Record<string, Downloads>> {
-  const cache = caches.default;
-  const cached = await cache.match(COUNTS_CACHE_KEY);
-  if (cached) return (await cached.json()) as Record<string, Downloads>;
+async function getCounts(env: Env): Promise<Record<string, Downloads>> {
+  const now = Date.now();
+  if (countsCache && now - countsCache.at < COUNTS_TTL_MS) return countsCache.counts;
 
   const today = utcDay();
   const [totals, daily] = await env.DB.batch<{ mod_id: string; n: number }>([
@@ -59,12 +62,7 @@ async function getCounts(env: Env, ctx: ExecutionContext): Promise<Record<string
   for (const row of daily.results) {
     (counts[row.mod_id] ??= { total: 0, today: 0 }).today = row.n;
   }
-  ctx.waitUntil(
-    cache.put(
-      COUNTS_CACHE_KEY,
-      json(counts, { headers: { "cache-control": `max-age=${COUNTS_TTL_SECONDS}` } }),
-    ),
-  );
+  countsCache = { at: now, counts };
   return counts;
 }
 
@@ -96,15 +94,40 @@ async function recordDownload(env: Env, request: Request, modId: string): Promis
   }
 }
 
-const REPORT_MAX_BYTES = 1_000_000; // D1 rows are capped at 2 MB; the app truncates logs well below this
+const REPORT_MAX_BYTES = 1_000_000; // D1 rows are capped at 2 MB; the app truncates logs to fit (see report.rs MAX_LOG_BYTES)
 const REPORTS_PER_IP_PER_DAY = 5;
 const REPORT_FIELD_MAX = 20_000;
+
+/** Read a body as text, aborting once it exceeds `max` bytes (content-length can be absent or lie). */
+async function readTextCapped(request: Request, max: number): Promise<string | null> {
+  if (!request.body) return "";
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > max) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+  const all = new Uint8Array(size);
+  let offset = 0;
+  for (const c of chunks) {
+    all.set(c, offset);
+    offset += c.byteLength;
+  }
+  return new TextDecoder().decode(all);
+}
 
 async function submitReport(request: Request, env: Env): Promise<Response> {
   const declared = Number(request.headers.get("content-length") ?? "0");
   if (declared > REPORT_MAX_BYTES) return fail(413, "report too large");
-  const raw = await request.text();
-  if (raw.length > REPORT_MAX_BYTES) return fail(413, "report too large");
+  const raw = await readTextCapped(request, REPORT_MAX_BYTES);
+  if (raw === null) return fail(413, "report too large");
 
   let body: Record<string, unknown>;
   try {
@@ -156,14 +179,6 @@ async function handle(request: Request, env: Env, ctx: ExecutionContext): Promis
 
   if (path === "/healthz" && request.method === "GET") return new Response("ok");
 
-  if (path.startsWith("/thumbnails/") && request.method === "GET") {
-    const res = await env.ASSETS.fetch(new Request(new URL(path, url.origin)));
-    if (!res.ok) return fail(404, "not found");
-    const out = new Response(res.body, res);
-    out.headers.set("cache-control", "public, max-age=86400");
-    return out;
-  }
-
   if (path === "/report" && request.method === "POST") return submitReport(request, env);
 
   if (path === "/mods" && request.method === "GET") return listMods(url, env, ctx, false);
@@ -182,7 +197,7 @@ async function handle(request: Request, env: Env, ctx: ExecutionContext): Promis
     if (!mod) return fail(404, "mod not found");
 
     if (!match[2] && request.method === "GET") {
-      const counts = await getCounts(env, ctx);
+      const counts = await getCounts(env);
       return json(withDownloads(mod, counts));
     }
     if (match[2] && request.method === "POST") {
@@ -208,7 +223,7 @@ async function listMods(
   const since = url.searchParams.get("since");
   if (changedOnly && !since) return fail(400, "since is required");
 
-  const [catalog, counts] = await Promise.all([loadCatalog(env, url.origin), getCounts(env, ctx)]);
+  const [catalog, counts] = await Promise.all([loadCatalog(env, url.origin), getCounts(env)]);
   const source = changedOnly ? changedSince(catalog, since!) : catalog;
   const sorted = sortMods(source, parseSort(url.searchParams.get("sort")), counts);
   const page = paginate(sorted, offset, parseLimit(url.searchParams.get("limit")));

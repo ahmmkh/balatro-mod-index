@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import re
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -31,6 +32,32 @@ THUMB_QUALITY = 80
 # Mod ids are "<author>@<name>" directory names. Anything else would make the
 # thumbnail path ambiguous, so reject it.
 SAFE_ID = re.compile(r"^[^/\\<>:\"|?*\x00-\x1f]+$")
+
+
+def last_commit_times() -> dict[str, int]:
+    """Map mod id -> unix time of the newest commit touching its directory.
+
+    Many mods have no ``last-updated`` field, so without this a new or edited mod would never reach
+    clients doing incremental sync. Needs full history (CI uses fetch-depth: 0); on a shallow clone
+    every mod just gets the tip commit's time, which is safe (clients refetch a bit more).
+    """
+    try:
+        out = subprocess.run(
+            ["git", "-c", "core.quotepath=off", "log", "--name-only", "--format=@@%ct", "--", "mods"],
+            cwd=ROOT, capture_output=True, text=True, check=True,
+        ).stdout
+    except (OSError, subprocess.CalledProcessError) as exc:
+        print(f"warning: git history unavailable ({exc}); using meta last-updated only", file=sys.stderr)
+        return {}
+    times: dict[str, int] = {}
+    current = 0
+    for line in out.splitlines():
+        if line.startswith("@@"):
+            current = int(line[2:])
+        elif line.startswith("mods/"):
+            mod_id = line.split("/", 2)[1]
+            times.setdefault(mod_id, current)  # log is newest-first
+    return times
 
 
 def find_thumbnail(mod_dir: Path) -> Path | None:
@@ -54,7 +81,7 @@ def convert_thumbnail(src: Path, dest: Path) -> bool:
         return False
 
 
-def build_entry(mod_dir: Path, has_thumbnail: bool) -> dict | None:
+def build_entry(mod_dir: Path, has_thumbnail: bool, commit_times: dict[str, int]) -> dict | None:
     mod_id = mod_dir.name
     try:
         meta = json.loads((mod_dir / "meta.json").read_text(encoding="utf-8"), strict=False)
@@ -67,7 +94,7 @@ def build_entry(mod_dir: Path, has_thumbnail: bool) -> dict | None:
 
     desc_path = mod_dir / "description.md"
     description = desc_path.read_text(encoding="utf-8", errors="replace") if desc_path.exists() else ""
-    updated = int(meta.get("last-updated") or 0)
+    updated = max(int(meta.get("last-updated") or 0), commit_times.get(mod_id, 0))
 
     entry = {
         "id": mod_id,
@@ -86,6 +113,7 @@ def main() -> int:
         shutil.rmtree(OUT_DIR)
     THUMB_DIR.mkdir(parents=True)
 
+    commit_times = last_commit_times()
     entries: list[dict] = []
     for mod_dir in sorted(p for p in MODS_DIR.iterdir() if p.is_dir()):
         if not SAFE_ID.match(mod_dir.name):
@@ -93,7 +121,7 @@ def main() -> int:
             continue
         thumb_src = find_thumbnail(mod_dir)
         has_thumb = bool(thumb_src) and convert_thumbnail(thumb_src, THUMB_DIR / f"{mod_dir.name}.webp")
-        entry = build_entry(mod_dir, has_thumb)
+        entry = build_entry(mod_dir, has_thumb, commit_times)
         if entry is None:
             (THUMB_DIR / f"{mod_dir.name}.webp").unlink(missing_ok=True)
             continue
