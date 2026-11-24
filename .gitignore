@@ -174,3 +174,11 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+worker/public/
+worker/node_modules/
+worker/.wrangler/
+worker/worker-configuration.d.ts
+.dev.vars
+build/
+server/data/
+server/node_modules/

@@ -1,16 +1,17 @@
 # Balatro Mod Index Guide
 
 > [!WARNING]
-> **This index is no longer maintained.**
+> **This is a maintained fork** of the original index, which served the retired Balatro Mod Manager backend.
+> Submissions are pull requests to this repository (the hosted submission helper no longer exists).
 
-![Balatro Image](https://github.com/skyline69/balatro-mod-index/blob/main/media/Balatro.jpg?raw=true)
+![Balatro Image](https://github.com/ahmmkh/Balatro-Mod-Index/blob/main/media/Balatro.jpg?raw=true)
 
 This repository indexes Balatro mods for use in Balatro Mod Manager.
 Follow this guide to submit mods that pass validation quickly.
 
 ## Want to upload a new mod?
 
-First, check the information below for what to submit, then use the [BMI Submission Helper](https://bmi-helper.dasguney.com/) to easily upload new Mods to the index!
+First, check the information below for what to submit, then open a pull request adding `mods/<Author>@<ModName>/` with a `meta.json`, `description.md` and optional `thumbnail.jpg`/`.png`.
 After the PR has been made, Reviewers will check if the Submission is safe and ready to merge and your Mod will be on the Index in no time!
 
 **(Make sure to read this entire file for help so you don't open an issue for something resolved here)**
@@ -105,7 +106,7 @@ This is required to avoid accidental update freeze behavior.
 ## Description Suggestions
 - Make sure to include a summary of your mod with proper formatting, markdown is supported.
 - Please, do not just write "My cool balatro mod that adds 10 jokers".
-- Examples: [1](https://github.com/skyline69/balatro-mod-index/blob/main/mods/ABGamma%40Brainstorm-Rerolled/description.md), [2](https://github.com/skyline69/balatro-mod-index/blob/main/mods/Alex%40Mayhem/description.md), if your mod doesn't need much explaining you can also try something like [this](https://github.com/skyline69/balatro-mod-index/blob/main/mods/Virtualized%40Multiplayer/description.md), if your mod doesn't add many jokers you can also explain them all like [this](https://github.com/skyline69/balatro-mod-index/blob/main/mods/pawPatoes%40roze/description.md)
+- Examples: [1](https://github.com/ahmmkh/Balatro-Mod-Index/blob/main/mods/ABGamma%40Brainstorm-Rerolled/description.md), [2](https://github.com/ahmmkh/Balatro-Mod-Index/blob/main/mods/Alex%40Mayhem/description.md), if your mod doesn't need much explaining you can also try something like [this](https://github.com/ahmmkh/Balatro-Mod-Index/blob/main/mods/Virtualized%40Multiplayer/description.md), if your mod doesn't add many jokers you can also explain them all like [this](https://github.com/ahmmkh/Balatro-Mod-Index/blob/main/mods/pawPatoes%40roze/description.md)
 
 
 ## Thumbnail Rules
@@ -120,7 +121,7 @@ This is required to avoid accidental update freeze behavior.
 ### Disclaimer
 * After submitting a mod, please make sure to check github often to see if your mod had an issue/got rejected!
 
-Automatic way: https://bmi-helper.dasguney.com/  
+Automatic way: _(the hosted helper has been retired; use the manual way below)_  
 
 Manual:
 1. Fork this repository.
@@ -182,7 +183,7 @@ Not allowed:
 
 By submitting a mod, you agree to allow it to be displayed in and redistributed by [Balatro Mod Manager](https://github.com/skyline69/balatro-mod-manager/).
 
-If you want content removed later, open an [Issue](https://github.com/skyline69/balatro-mod-index/issues) or submit a PR that removes the content.
+If you want content removed later, open an [Issue](https://github.com/ahmmkh/Balatro-Mod-Index/issues) or submit a PR that removes the content.
 
 ## Third-Party Submissions
 

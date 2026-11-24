@@ -8,7 +8,7 @@
   ],
   "author": "Rageinater",
   "repo": "https://github.com/RageinaterCode/Balatro-Quality",
-  "downloadURL": "https://github.com/RageinaterCode/Balatro-Quality/releases/latest/download/quality.zip,
+  "downloadURL": "https://github.com/RageinaterCode/Balatro-Quality/releases/latest/download/quality.zip",
   "version": "0.3.6",
   "automatic-version-check": true,
   "fixed-release-tag-updates": false,
