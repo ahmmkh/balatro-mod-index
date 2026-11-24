@@ -116,3 +116,10 @@ def test_changed_only_validates_just_touched_mods(tmp_path, monkeypatch):
     only = v.changed_mods("HEAD~1..HEAD", mods)
     assert only == {"b@New"}
     assert [f.mod for f in v.validate_all(mods, only)] == ["b@New"]
+
+
+def test_symlinks_are_errors(tmp_path):
+    d = make_mod(tmp_path)
+    (d / "description.md").unlink()
+    (d / "description.md").symlink_to("/etc/hostname")
+    assert codes(v.validate_mod(d)) == ["symlink"]

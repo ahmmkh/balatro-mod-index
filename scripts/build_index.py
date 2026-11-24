@@ -94,7 +94,11 @@ def build_entry(mod_dir: Path, has_thumbnail: bool, commit_times: dict[str, int]
 
     desc_path = mod_dir / "description.md"
     description = desc_path.read_text(encoding="utf-8", errors="replace") if desc_path.exists() else ""
-    updated = max(int(meta.get("last-updated") or 0), commit_times.get(mod_id, 0))
+    try:
+        stamp = int(meta.get("last-updated") or 0)
+    except (TypeError, ValueError):
+        stamp = 0  # a malformed timestamp must not fail the whole build
+    updated = max(stamp, commit_times.get(mod_id, 0))
 
     entry = {
         "id": mod_id,
@@ -122,6 +126,9 @@ def main() -> int:
     for mod_dir in sorted(p for p in MODS_DIR.iterdir() if p.is_dir()):
         if not SAFE_ID.match(mod_dir.name):
             print(f"warning: skipping unsafe mod id {mod_dir.name!r}", file=sys.stderr)
+            continue
+        if any(p.is_symlink() for p in [mod_dir, *mod_dir.iterdir()]):
+            print(f"warning: skipping {mod_dir.name}: contains a symlink", file=sys.stderr)
             continue
         thumb_src = find_thumbnail(mod_dir)
         has_thumb = bool(thumb_src) and convert_thumbnail(thumb_src, thumb_dir / f"{mod_dir.name}.webp")

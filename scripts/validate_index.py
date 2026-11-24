@@ -74,6 +74,10 @@ def validate_mod(mod_dir: Path) -> list[Finding]:
     def warn(code: str, msg: str) -> None:
         out.append(Finding("warning", code, mod, msg))
 
+    if any(p.is_symlink() for p in [mod_dir, *mod_dir.iterdir()]):
+        err("symlink", "mod directories must not contain symlinks")
+        return out
+
     if mod.count("@") != 1 or not all(mod.split("@")) or any(c in UNSAFE_ID_CHARS for c in mod):
         err("bad-dir-name", "directory must be <author>@<name> with only URL- and filesystem-safe characters")
 
